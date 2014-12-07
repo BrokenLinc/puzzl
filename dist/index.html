@@ -14,34 +14,105 @@
 		<style>
 			.puzzle {
 			}
-			.puzzle path {
+			.puzzle .piece {
 				fill: url(#puzzleImage);
 				stroke: #222;
 				stroke-width: 3px;
 				transition: all 1s;
 			}
-			.complete .puzzle path {
+			.puzzle .segment {
+				filter: url(#filterDropShadow);
+			}
+			.puzzle .segment.selected {
+				filter: url(#filterDropShadowSelected);
+			}
+			.complete .puzzle .piece {
 				stroke: #666;
 				stroke-width: 1px;
+			}
+			.pane {
+				display:none;
+			}
+			.pane.current {
+				display:block;
+			}
+			.well--create {
+				margin:0 auto;
+				max-width:320px;
+			}
+			h1 {
+				text-align: center;
+			}
+			.bar--bottom {
+				position: absolute;
+				background:rgba(0,0,0,0.2);
+				bottom:0;
+				width:100%;
+				text-align: center;
+			}
+			.board {
+				width:100%;
+				height:100%;
+				position: absolute;
 			}
 		</style>
 	</head>
 	<body>
 
-		<h1 class="js-title">No Puzzle Loaded</h1>
-		<input class="js-puzzlename" type="text" value="New Puzzle" />
-		<input class="js-image" type="text" value="img/800px-Loughrigg_Tarn_-_Oct_2009.jpg" />
-		<input class="js-diecut" type="text" value="2x1x2" />
-		<button class="btn btn-default js-create-puzzle">New Puzzle</button>
-		<a class="js-joinlink" href="javascript:void(0)" target="_blank">Link to this puzzle</a>
+		<div class="pane js-panel js-panel--create">
 
-		<svg class="puzzle">
-			<defs>
-				<pattern id="puzzleImage" patternUnits="userSpaceOnUse">
-					<image x="0" y="0" xlink:href="" /> <!-- need empty href! -->
-				</pattern>
-			</defs>
-		</svg>
+			<div class="container">
+				<h1>Make a new puzzle</h1>
+
+				<div class="well well--create">
+
+					<div class="form">
+						<input class="js-puzzlename" type="hidden" value="New Puzzle" />
+
+						<div class="form-group">
+							<label>Image</label>
+							<select class="js-image form-control">
+								<option value="img/paris.jpg">Louvre, Paris, 2x1</option>
+								<option value="img/800px-Loughrigg_Tarn_-_Oct_2009.jpg">Loughrigg Fell, England, 2x1</option>
+							</select>
+						</div>
+						<div class="form-group">
+							<label>Pieces</label>
+							<select class="js-diecut form-control">
+								<option value="2x1x2">2x1, 2 pieces</option>
+							</select>
+						</div>
+						<button class="btn btn-default btn-block js-create-puzzle">Start puzzlin!</button>
+					</div>
+
+				</div>
+			</div>
+
+		</div>
+
+		<div class="pane js-panel js-panel--play">
+			<svg class="board" viewBox="-100 -100 1000 600">
+				<defs>
+					<pattern id="puzzleImage" patternUnits="userSpaceOnUse">
+						<image x="0" y="0" xlink:href="" /> <!-- need empty href! -->
+					</pattern>
+					<filter id="filterDropShadow" x="0" y="0" width="110%" height="110%">
+						<feOffset result="offOut" in="SourceAlpha" dx="5" dy="5" />
+						<feGaussianBlur result="blurOut" in="offOut" stdDeviation="5" />
+						<feBlend in="SourceGraphic" in2="blurOut" mode="normal" />
+					</filter>
+					<filter id="filterDropShadowSelected" x="0" y="0" width="130%" height="130%">
+						<feOffset result="offOut" in="SourceAlpha" dx="15" dy="15" />
+						<feGaussianBlur result="blurOut" in="offOut" stdDeviation="15" />
+						<feBlend in="SourceGraphic" in2="blurOut" mode="normal" />
+					</filter>
+				</defs>
+				<g class="puzzle"></g>
+			</svg>
+			<div class="bar--bottom">
+				<a class="js-joinlink btn btn-link" href="javascript:void(0)" target="_blank">Link to this puzzle</a>
+			</div>
+		</feBlend>
 
 		<script src="//cdnjs.cloudflare.com/ajax/libs/lodash.js/2.4.1/lodash.min.js"></script>
 		<script src="//cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
@@ -63,6 +134,8 @@
 			//load an existing game?
 			if(puzzleId) {
 				loadPuzzle(puzzleId);
+			} else {
+				setState('create');
 			}
 			gameLoop();
 
@@ -125,6 +198,7 @@
 								id: id
 							}) //supply segment data
 							.prependTo($puzzle); //add to puzzle
+							addClass(g, 'segment');
 
 						//add paths to segment group
 						_.each(segment.pieces, function(id){
@@ -137,16 +211,39 @@
 							segment.pos.needsrefresh = true;
 						});
 						puzzleRef.child('segments/'+id+'/pieces').on('child_added', function(snapshot){
-							$('#'+snapshot.name()).appendTo($g);
+							var path = $('#'+snapshot.name()).appendTo($g)[0];
+							addClass(path, 'piece');
 
 							//this is weird
-							if($('.puzzle > g').not(':empty').length == 1) {
+							if($('.puzzle .segment').not(':empty').length == 1) {
 								$('body').addClass('complete');
 								window.alert("You did it!")
 							}
 						});
 					});
+
+					setState('play');
 				}, 'xml');
+			}
+
+			function scaleRelative(value, center) {
+				var scale = -value/1000; //Math.pow(0.999, -value);
+				var board = $('.board')[0];
+				var vb = board.getAttribute('viewBox').split(' '); //jq not working
+				var newvb = [];
+
+				//cast strings to numbers
+				for(var i=0;i<vb.length;i++) {
+					vb[i] = Number(vb[i]);
+				}
+
+				//sca;e viewbox
+				newvb[0] = vb[0] + (center.x - vb[0]) * scale;
+				newvb[1] = vb[1] + (center.y - vb[1]) * scale;
+				newvb[2] = vb[2] * (1 - scale);
+				newvb[3] = vb[3] * (1 - scale);
+
+				board.setAttribute('viewBox', newvb.join(' '));
 			}
 
 			//cycling
@@ -156,7 +253,7 @@
 			}
 			function updateUI() {
 				//optimize for changes only
-				$('.puzzle > g').each(function(index){
+				$('.puzzle .segment').each(function(index){
 					var segment = $(this).data(SEGMENT_DATA_KEY);
 
 					if(segment.pos.needsrefresh) {
@@ -181,7 +278,7 @@
 			function combineSegments(seg2, seg1) {
 				//get the piece ids
 				var pieces = {};
-				$('path', seg1.elem).each(function(){
+				$('.piece', seg1.elem).each(function(){
 					var id = $(this).attr('id');
 					pieces[id] = id;
 				});
@@ -192,17 +289,6 @@
 
 				//TODO: cleanup segment, trash dependencies
 				//puzzleRef.child('segments/'+seg1.id).remove();
-			}
-			function combineSegments_OLD(seg2, seg1) {
-				//move the paths from seg1.elem into seg2.elen
-				$('path', seg1.elem).appendTo(seg2.elem);
-				$(seg2.elem).appendTo('.puzzle'); //bring to front
-				$(seg1.elem).remove();
-
-				if($('.puzzle > g').length == 1) {
-					$('body').addClass('complete');
-					//window.alert("You did it!")
-				}
 			}
 			function createSegmentData(numSegments) {
 				var segments = {};
@@ -216,10 +302,39 @@
 				//console.log(segments);
 				return segments;
 			}
+			function addClass(elem, cssclass) {
+				if(elem.className) { //TODO: add typeof check for string vs SVGAnimatedString
+					elem.className.baseVal = (elem.className.baseVal || '') + ' '+cssclass+' '
+				}
+			}
+			function removeClass(elem, cssclass) {
+				if(elem.className) { //TODO: add typeof check for string vs SVGAnimatedString
+					elem.className.baseVal = elem.className.baseVal.replace(' '+cssclass+' ', '');
+				}
+			}
+			//translate cpords to SVG coordinates (useful for mouse)
+			function translatePointOnSVG(o, elem){
+				var m = elem.getScreenCTM();
+				var p = elem.createSVGPoint(); 
+				p.x = o.x;
+				p.y = o.y;
+				p = p.matrixTransform(m.inverse());
+				return p;
+			}
 
 			/***************************
 				UI INTERACTION
 			***************************/
+
+			//scroll zoom
+			$(document).on('mousewheel DOMMouseScroll', '.board', function(e) {
+				var p = translatePointOnSVG({x:e.pageX, y:e.pageY}, this);
+				scaleRelative(e.originalEvent.deltaY, p);
+
+				e.preventDefault();
+				e.stopPropagation();
+				return false;
+			});
 
 			//create a puzzle
 			$(document).on('click', '.js-create-puzzle', function(){
@@ -230,6 +345,14 @@
 				);
 			});
 
+			function setState(stateKey) {
+				$('.js-panel.current').removeClass('current');
+				$('.js-panel--'+stateKey).addClass('current');
+			}
+			$(document).on('click', '.js-changestate', function(){
+				setState($(this).data('state'));
+			});
+
 			//mouse interaction
 			var currentSegment;
 			var mousePrevPos;
@@ -238,7 +361,8 @@
 				.on('mousedown', '.puzzle g', function(e) {
 					//keep track of active segment
 					currentSegment = $(this).appendTo('.puzzle').data(SEGMENT_DATA_KEY);
-					mousePrevPos = {x:e.pageX, y:e.pageY};
+					addClass(this, 'selected');
+					mousePrevPos = translatePointOnSVG({x:e.pageX, y:e.pageY}, $('.board')[0]);
 				})
 				.on('mouseup', function() {
 					if(currentSegment){
@@ -249,6 +373,8 @@
 								if(segmentsCloserThan(segment, currentSegment, SNAP_DISTANCE)) {
 									combineSegments(segment, currentSegment);
 								}
+							} else {
+								removeClass(this, 'selected');
 							}
 						});
 					}
@@ -257,9 +383,10 @@
 				.on('mousemove', function(e){
 					if(currentSegment) {
 						//update data to new position
-						currentSegment.pos.x += e.pageX - mousePrevPos.x;
-						currentSegment.pos.y += e.pageY - mousePrevPos.y;
-						mousePrevPos = {x:e.pageX, y:e.pageY};
+						var mousePos = translatePointOnSVG({x:e.pageX, y:e.pageY}, $('.board')[0]);
+						currentSegment.pos.x += mousePos.x - mousePrevPos.x;
+						currentSegment.pos.y += mousePos.y - mousePrevPos.y;
+						mousePrevPos = mousePos;
 
 						currentSegment.pos.needsrefresh = true;
 						currentSegment.pos.dirty = true;
