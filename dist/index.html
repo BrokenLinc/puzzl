@@ -136,6 +136,15 @@
 							segment.pos = snapshot.val();
 							segment.pos.needsrefresh = true;
 						});
+						puzzleRef.child('segments/'+id+'/pieces').on('child_added', function(snapshot){
+							$('#'+snapshot.name()).appendTo($g);
+
+							//this is weird
+							if($('.puzzle > g').not(':empty').length == 1) {
+								$('body').addClass('complete');
+								window.alert("You did it!")
+							}
+						});
 					});
 				}, 'xml');
 			}
@@ -143,7 +152,7 @@
 			//cycling
 			function gameLoop() {
 				updateUI();
-				setTimeout(gameLoop, 1);
+				setTimeout(gameLoop, 33);
 			}
 			function updateUI() {
 				//optimize for changes only
@@ -170,6 +179,21 @@
 				return (Math.pow(seg1.pos.x - seg2.pos.x, 2) + Math.pow(seg1.pos.y - seg2.pos.y, 2)  < Math.pow(dist, 2))
 			}
 			function combineSegments(seg2, seg1) {
+				//get the piece ids
+				var pieces = {};
+				$('path', seg1.elem).each(function(){
+					var id = $(this).attr('id');
+					pieces[id] = id;
+				});
+
+				//update fb
+				puzzleRef.child('segments/'+seg2.id+'/pieces').update(pieces);
+				puzzleRef.child('segments/'+seg1.id+'/pieces').remove();
+
+				//TODO: cleanup segment, trash dependencies
+				//puzzleRef.child('segments/'+seg1.id).remove();
+			}
+			function combineSegments_OLD(seg2, seg1) {
 				//move the paths from seg1.elem into seg2.elen
 				$('path', seg1.elem).appendTo(seg2.elem);
 				$(seg2.elem).appendTo('.puzzle'); //bring to front
