@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Puzzl</title>
+		<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+		<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootswatch/3.2.0/slate/bootstrap.min.css">
+		<!--[if lt IE 9]>
+		<script src="//oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+		<script src="//oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+		<![endif]-->
+		<style>
+			.puzzle {
+			}
+			.puzzle path {
+				fill: url(#puzzleImage);
+				stroke: #222;
+				stroke-width: 3px;
+				transition: all 1s;
+			}
+			.complete .puzzle path {
+				stroke: #666;
+				stroke-width: 1px;
+			}
+		</style>
+	</head>
+	<body>
+
+		<h1 class="js-title">No Puzzle Loaded</h1>
+		<input class="js-puzzlename" type="text" value="New Puzzle" />
+		<input class="js-image" type="text" value="img/800px-Loughrigg_Tarn_-_Oct_2009.jpg" />
+		<input class="js-diecut" type="text" value="2x1x2" />
+		<button class="btn btn-default js-create-puzzle">New Puzzle</button>
+		<a class="js-joinlink" href="javascript:void(0)" target="_blank">Link to this puzzle</a>
+
+		<svg class="puzzle">
+			<defs>
+				<pattern id="puzzleImage" patternUnits="userSpaceOnUse">
+					<image x="0" y="0" xlink:href="" /> <!-- need empty href! -->
+				</pattern>
+			</defs>
+		</svg>
+
+		<script src="//cdnjs.cloudflare.com/ajax/libs/lodash.js/2.4.1/lodash.min.js"></script>
+		<script src="//cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+		<!--<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>-->
+		<script src="//cdn.firebase.com/js/client/1.0.21/firebase.js"></script>
+
+		<script>
+		var puzzleGame = (function(){
+			var SEGMENT_DATA_KEY = 'segment';
+			var SNAP_DISTANCE = 10;
+
+			//init
+			var $puzzle = $('.puzzle');
+			var hash = location.hash;
+			var puzzleId = hash.substr(1);
+			var puzzleRef;
+			var fb = new Firebase('https://puzzl.firebaseio.com/');
+
+			//load an existing game?
+			if(puzzleId) {
+				loadPuzzle(puzzleId);
+			}
+			gameLoop();
+
+			/***************************
+				METHODS
+			***************************/
+
+			function createPuzzle(name, image, diecut) {
+				var numPieces = diecut.split('x')[2];
+				puzzleRef = fb.child('puzzles').push({
+					info: {
+						name: name,
+						image: image,
+						diecut: diecut
+					},
+					//users: {},
+					segments: createSegmentData(numPieces)
+				});
+				startPuzzle();
+			}
+
+			function loadPuzzle(id) {
+				puzzleRef = fb.child('puzzles/'+id);
+				startPuzzle();
+			}
+
+			//wire up to a fb ref
+			function startPuzzle() {
+				location.hash = puzzleRef.name();
+				$('.js-joinlink').attr('href', location.href);
+
+				puzzleRef.once('value', function(snapshot) {
+					setupPuzzle(snapshot.val());
+				})
+			}
+
+			//set up svg and wire up data
+			function setupPuzzle(puzzleData) {
+				$('.js-title').text(puzzleData.info.name);
+
+				//set the image
+				$('.puzzle, #puzzleImage image').attr('xlink:href', puzzleData.info.image)
+
+				//set up the pieces
+				$.get('diecuts/'+puzzleData.info.diecut+'.svg?nocache='+Math.round(Math.random()*10000), null, function(data) {
+					var $svg = $("svg", data);
+
+					//set size
+					$('.puzzle, #puzzleImage, #puzzleImage image')
+						.attr('width', $svg.attr('width').replace('px',''))
+						.attr('height', $svg.attr('height').replace('px',''));
+
+					//for every segment in Firebase
+					_.each(puzzleData.segments, function(segment, id){
+						var g = svgelem('g'); //create a group
+						var $g = $(g).attr('id', id)
+							.data(SEGMENT_DATA_KEY, { //import the data
+								pos: segment.pos,
+								elem:g,
+								id: id
+							}) //supply segment data
+							.prependTo($puzzle); //add to puzzle
+
+						//add paths to segment group
+						_.each(segment.pieces, function(id){
+							$g.append($('#'+id, $svg)[0]);
+						});
+
+						puzzleRef.child('segments/'+id+'/pos').on('value', function(snapshot){
+							var segment = $g.data(SEGMENT_DATA_KEY);
+							segment.pos = snapshot.val();
+							segment.pos.needsrefresh = true;
+						});
+					});
+				}, 'xml');
+			}
+
+			//cycling
+			function gameLoop() {
+				updateUI();
+				setTimeout(gameLoop, 1);
+			}
+			function updateUI() {
+				//optimize for changes only
+				$('.puzzle > g').each(function(index){
+					var segment = $(this).data(SEGMENT_DATA_KEY);
+
+					if(segment.pos.needsrefresh) {
+						delete(segment.pos.needsrefresh);
+						$(this).attr('transform', 'translate('+segment.pos.x+','+segment.pos.y+')');
+					}
+					if(segment.pos.dirty) {
+						delete(segment.pos.dirty);
+						//send to server
+						puzzleRef.child('segments/'+segment.id+'/pos').set(segment.pos);
+					}
+				});
+			}
+
+			//utils
+			function svgelem(tag) {
+				return document.createElementNS("http://www.w3.org/2000/svg", tag);
+			}
+			function segmentsCloserThan(seg1, seg2, dist) {
+				return (Math.pow(seg1.pos.x - seg2.pos.x, 2) + Math.pow(seg1.pos.y - seg2.pos.y, 2)  < Math.pow(dist, 2))
+			}
+			function combineSegments(seg2, seg1) {
+				//move the paths from seg1.elem into seg2.elen
+				$('path', seg1.elem).appendTo(seg2.elem);
+				$(seg2.elem).appendTo('.puzzle'); //bring to front
+				$(seg1.elem).remove();
+
+				if($('.puzzle > g').length == 1) {
+					$('body').addClass('complete');
+					//window.alert("You did it!")
+				}
+			}
+			function createSegmentData(numSegments) {
+				var segments = {};
+				for(var i=1;i<=numSegments; i++) { //1-based
+					var segment = segments['s'+i] = {
+						pos: { x:0, y:0 },
+						pieces: {}
+					};
+					segment.pieces['p'+i] = 'p'+i;
+				}
+				//console.log(segments);
+				return segments;
+			}
+
+			/***************************
+				UI INTERACTION
+			***************************/
+
+			//create a puzzle
+			$(document).on('click', '.js-create-puzzle', function(){
+				createPuzzle(
+					$('.js-puzzlename').val(),
+					$('.js-image').val(),
+					$('.js-diecut').val()
+				);
+			});
+
+			//mouse interaction
+			var currentSegment;
+			var mousePrevPos;
+			var updateTimeout;
+			$(document)
+				.on('mousedown', '.puzzle g', function(e) {
+					//keep track of active segment
+					currentSegment = $(this).appendTo('.puzzle').data(SEGMENT_DATA_KEY);
+					mousePrevPos = {x:e.pageX, y:e.pageY};
+				})
+				.on('mouseup', function() {
+					if(currentSegment){
+						//for each OTHER segment
+						$('.puzzle g').each(function(index){
+							if(this != currentSegment.elem) {
+								var segment = $(this).data(SEGMENT_DATA_KEY);
+								if(segmentsCloserThan(segment, currentSegment, SNAP_DISTANCE)) {
+									combineSegments(segment, currentSegment);
+								}
+							}
+						});
+					}
+					currentSegment = null;
+				})
+				.on('mousemove', function(e){
+					if(currentSegment) {
+						//update data to new position
+						currentSegment.pos.x += e.pageX - mousePrevPos.x;
+						currentSegment.pos.y += e.pageY - mousePrevPos.y;
+						mousePrevPos = {x:e.pageX, y:e.pageY};
+
+						currentSegment.pos.needsrefresh = true;
+						currentSegment.pos.dirty = true;
+					}
+				});
+			
+
+		})();
+		</script>
+
+	</body>
+</html>
