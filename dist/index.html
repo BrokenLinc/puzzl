@@ -79,6 +79,7 @@
 						<div class="form-group">
 							<label>Pieces</label>
 							<select class="js-diecut form-control">
+								<option value="2x1x11">2x1, 11 pieces</option>
 								<option value="2x1x2">2x1, 2 pieces</option>
 							</select>
 						</div>
@@ -122,7 +123,7 @@
 		<script>
 		var puzzleGame = (function(){
 			var SEGMENT_DATA_KEY = 'segment';
-			var SNAP_DISTANCE = 10;
+			var SNAP_DISTANCE = 20;
 
 			//init
 			var $puzzle = $('.puzzle');
@@ -182,6 +183,12 @@
 				//set up the pieces
 				$.get('diecuts/'+puzzleData.info.diecut+'.svg?nocache='+Math.round(Math.random()*10000), null, function(data) {
 					var $svg = $("svg", data);
+					//cleanup
+					$('path', $svg).each(function(index){
+						if(!$(this).attr('id')){
+							$(this).attr('id', 'p'+index);
+						}
+					});
 
 					//set size
 					$('.puzzle, #puzzleImage, #puzzleImage image')
@@ -292,9 +299,12 @@
 			}
 			function createSegmentData(numSegments) {
 				var segments = {};
-				for(var i=1;i<=numSegments; i++) { //1-based
+				for(var i=0;i<numSegments; i++) { //1-based
 					var segment = segments['s'+i] = {
-						pos: { x:0, y:0 },
+						pos: { 
+							x:Math.random()*600 - 300, 
+							y:Math.random()*600 - 300 
+						},
 						pieces: {}
 					};
 					segment.pieces['p'+i] = 'p'+i;
