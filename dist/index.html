@@ -18,14 +18,13 @@
 				fill: url(#puzzleImage);
 				stroke: #222;
 				stroke-width: 3px;
-				transition: all 1s;
 			}
-			.puzzle .segment {
+			/*.puzzle .segment {
 				filter: url(#filterDropShadow);
 			}
 			.puzzle .segment.selected {
 				filter: url(#filterDropShadowSelected);
-			}
+			}*/
 			.complete .puzzle .piece {
 				stroke: #666;
 				stroke-width: 1px;
@@ -126,6 +125,8 @@
 			var SNAP_DISTANCE = 20;
 
 			//init
+			var isDoneLoading = false;
+			var didWin = false;
 			var $puzzle = $('.puzzle');
 			var hash = location.hash;
 			var puzzleId = hash.substr(1);
@@ -213,22 +214,34 @@
 						});
 
 						puzzleRef.child('segments/'+id+'/pos').on('value', function(snapshot){
-							var segment = $g.data(SEGMENT_DATA_KEY);
-							segment.pos = snapshot.val();
-							segment.pos.needsrefresh = true;
+							if(snapshot.val()) {
+								var segment = $g.data(SEGMENT_DATA_KEY);
+								segment.pos = snapshot.val();
+								segment.pos.needsrefresh = true;
+							}
 						});
 						puzzleRef.child('segments/'+id+'/pieces').on('child_added', function(snapshot){
-							var path = $('#'+snapshot.name()).appendTo($g)[0];
+							var path = $('#'+snapshot.name()).appendTo($g)[0]; //move paths into this space
 							addClass(path, 'piece');
 
-							//this is weird
-							if($('.puzzle .segment').not(':empty').length == 1) {
+							//detect win
+							if(isDoneLoading && !didWin && $('.puzzle .segment').not(':empty').length == 1) {
+								didWin = true;
 								$('body').addClass('complete');
-								window.alert("You did it!")
+								setTimeout(function(){
+									window.alert("You did it!")
+								},1);
+							}
+						});
+						puzzleRef.child('segments/'+id).on('value', function(snapshot) {
+							if(!snapshot.val()) {
+								//TODO: garbage cleanup
+								$g.remove();
 							}
 						});
 					});
 
+					isDoneLoading = true;
 					setState('play');
 				}, 'xml');
 			}
@@ -292,10 +305,10 @@
 
 				//update fb
 				puzzleRef.child('segments/'+seg2.id+'/pieces').update(pieces);
-				puzzleRef.child('segments/'+seg1.id+'/pieces').remove();
+				//puzzleRef.child('segments/'+seg1.id+'/pieces').remove();
 
 				//TODO: cleanup segment, trash dependencies
-				//puzzleRef.child('segments/'+seg1.id).remove();
+				puzzleRef.child('segments/'+seg1.id).remove();
 			}
 			function createSegmentData(numSegments) {
 				var segments = {};
